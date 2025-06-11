@@ -591,9 +591,11 @@ sudo rm -f /etc/nginx/sites-enabled/default
 if sudo nginx -t; then
     echo_info "Nginx configuration is valid"
     echo_info "Stopping Bitnami Apache..."
-    sudo /opt/bitnami/ctlscript.sh stop apache
-    echo_info "Disabling Bitnami Apache from starting on boot..."
-    sudo /opt/bitnami/ctlscript.sh disable apache
+    if [ -f "/opt/bitnami/ctlscript.sh" ]; then
+        sudo /opt/bitnami/ctlscript.sh stop apache || echo_warn "Failed to stop Apache, it might not be running"
+        echo_info "Disabling Bitnami Apache from starting on boot..."
+        sudo mv /opt/bitnami/apache/scripts/ctl.sh /opt/bitnami/apache/scripts/ctl.sh.disabled 2>/dev/null || echo_warn "Failed to disable Apache, it might already be disabled"
+    fi
     echo_info "Starting Nginx service..."
     sudo systemctl start nginx
     sudo systemctl reload nginx
