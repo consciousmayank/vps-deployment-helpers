@@ -590,6 +590,10 @@ sudo rm -f /etc/nginx/sites-enabled/default
 # Test Nginx configuration
 if sudo nginx -t; then
     echo_info "Nginx configuration is valid"
+    echo_info "Stopping Bitnami Apache..."
+    sudo /opt/bitnami/ctlscript.sh stop apache
+    echo_info "Disabling Bitnami Apache from starting on boot..."
+    sudo /opt/bitnami/ctlscript.sh disable apache
     echo_info "Starting Nginx service..."
     sudo systemctl start nginx
     sudo systemctl reload nginx
