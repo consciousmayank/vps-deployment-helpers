@@ -97,10 +97,35 @@ for ((i=1; i<=NUM_PROJECTS; i++)); do
     
     # Get subdomain
     while true; do
-        read -p "Subdomain for $project_name (will create ${project_name}.${DOMAIN}): " subdomain
-        if [[ $subdomain =~ ^[a-zA-Z0-9_-]+$ ]]; then
-            SUBDOMAINS+=("$subdomain")
-            break
+        read -p "Subdomain for $project_name (leave empty to use main domain ${DOMAIN}, or enter subdomain to create ${project_name}.${DOMAIN}): " subdomain
+        if [ -z "$subdomain" ]; then
+            # Check if main domain is already taken
+            domain_conflict=false
+            for existing_subdomain in "${SUBDOMAINS[@]}"; do
+                if [ -z "$existing_subdomain" ]; then
+                    echo_error "Main domain ${DOMAIN} is already assigned to another project"
+                    domain_conflict=true
+                    break
+                fi
+            done
+            if [ "$domain_conflict" = false ]; then
+                SUBDOMAINS+=("")
+                break
+            fi
+        elif [[ $subdomain =~ ^[a-zA-Z0-9_-]+$ ]]; then
+            # Check if subdomain conflicts with existing ones
+            subdomain_conflict=false
+            for existing_subdomain in "${SUBDOMAINS[@]}"; do
+                if [ "$subdomain" = "$existing_subdomain" ]; then
+                    echo_error "Subdomain '$subdomain' is already used by another project"
+                    subdomain_conflict=true
+                    break
+                fi
+            done
+            if [ "$subdomain_conflict" = false ]; then
+                SUBDOMAINS+=("$subdomain")
+                break
+            fi
         else
             echo_error "Subdomain should contain only letters, numbers, underscores, and hyphens"
         fi
@@ -452,7 +477,7 @@ $(for ((i=0; i<${#PROJECTS[@]}; i++)); do
     cat << SERVEREOF
 server {
     listen 80;
-    server_name $subdomain.$DOMAIN;
+    server_name $([ -z "$subdomain" ] && echo "$DOMAIN" || echo "$subdomain.$DOMAIN");
     
     location / {
         limit_req zone=api burst=10 nodelay;
@@ -1052,11 +1077,15 @@ if [[ $DEPLOY_POCKETBASE =~ ^[Yy]$ ]]; then
 fi
 echo "   /var/www/pm2/           - PM2 configuration"
 echo ""
-echo "🔗 Your Subdomains:"
+echo "🔗 Your Domains:"
 for ((i=0; i<${#PROJECTS[@]}; i++)); do
     project="${PROJECTS[i]}"
     subdomain="${SUBDOMAINS[i]}"
-    echo "   http://${subdomain}.${DOMAIN}  - ${project^}"
+    if [ -z "$subdomain" ]; then
+        echo "   http://${DOMAIN}  - ${project^} (Main Domain)"
+    else
+        echo "   http://${subdomain}.${DOMAIN}  - ${project^}"
+    fi
 done
 if [[ $DEPLOY_POCKETBASE =~ ^[Yy]$ ]]; then
     echo "   http://${POCKETBASE_SUBDOMAIN}.${DOMAIN}  - PocketBase Backend"
@@ -1079,11 +1108,12 @@ echo "2. Set up SSL certificates:"
 CERT_DOMAINS=""
 for ((i=0; i<${#PROJECTS[@]}; i++)); do
     subdomain="${SUBDOMAINS[i]}"
-    CERT_DOMAINS="$CERT_DOMAINS -d ${subdomain}.${DOMAIN}"
+    if [ -z "$subdomain" ]; then
+        CERT_DOMAINS="$CERT_DOMAINS -d ${DOMAIN}"
+    else
+        CERT_DOMAINS="$CERT_DOMAINS -d ${subdomain}.${DOMAIN}"
+    fi
 done
-if [[ $DEPLOY_POCKETBASE =~ ^[Yy]$ ]]; then
-    CERT_DOMAINS="$CERT_DOMAINS -d ${POCKETBASE_SUBDOMAIN}.${DOMAIN}"
-fi
 echo "   sudo certbot --nginx$CERT_DOMAINS"
 echo ""
 echo "3. Monitor your applications:"
