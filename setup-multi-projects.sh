@@ -428,14 +428,16 @@ $(for ((i=0; i<${#PROJECTS[@]}; i++)); do
     cat << APPEOF
     {
       name: '$project',
-      script: '/var/www/$project/build/index.js',
+      script: 'node',
+      args: '/var/www/$project/build/index.js',
       cwd: '/var/www/$project',
       instances: 1,
       exec_mode: 'fork',
       env_production: {
         NODE_ENV: 'production',
         PORT: $port,
-        HOSTNAME: '0.0.0.0'
+        HOSTNAME: '0.0.0.0',
+        ORIGIN: 'http://localhost:$port'
       },
       max_memory_restart: '400M',
       error_file: '/var/www/$project/logs/error.log',
@@ -755,27 +757,64 @@ if [ ! -f "package.json" ]; then
 fi
 
 echo_info "📦 Installing dependencies..."
-if ! npm install; then
-    echo_error "❌ Failed to install dependencies"
-    exit 1
-fi
-
-echo_info "🔨 Building project..."
-if ! npm run build; then
-    echo_warn "⚠️ First build attempt failed, trying to install dev dependencies..."
-    if ! npm install --include=dev; then
-        echo_error "❌ Failed to install dev dependencies"
+# Check if this is a SvelteKit project
+if grep -q '"@sveltejs/kit"' package.json 2>/dev/null; then
+    echo_info "📦 Detected SvelteKit project, installing dependencies..."
+    if ! npm install; then
+        echo_error "❌ Failed to install dependencies"
         exit 1
     fi
-    echo_info "🔄 Retrying build with dev dependencies..."
+    
+    echo_info "🔨 Building SvelteKit project..."
+    # Run svelte-kit sync first
+    if ! npx svelte-kit sync; then
+        echo_error "❌ Failed to sync SvelteKit"
+        exit 1
+    fi
+    
+    # Then try to build
     if ! npm run build; then
-        echo_error "❌ Build failed"
-        echo_error "Check your build configuration and try again"
+        echo_warn "⚠️ First build attempt failed, trying to install dev dependencies..."
+        if ! npm install --include=dev; then
+            echo_error "❌ Failed to install dev dependencies"
+            exit 1
+        fi
+        echo_info "🔄 Retrying build with dev dependencies..."
+        # Run svelte-kit sync again after dev dependencies
+        if ! npx svelte-kit sync; then
+            echo_error "❌ Failed to sync SvelteKit"
+            exit 1
+        fi
+        if ! npm run build; then
+            echo_error "❌ Build failed"
+            echo_error "Check your build configuration and try again"
+            exit 1
+        fi
+    fi
+else
+    # Regular project build process
+    if ! npm install; then
+        echo_error "❌ Failed to install dependencies"
         exit 1
+    fi
+    
+    echo_info "🔨 Building project..."
+    if ! npm run build; then
+        echo_warn "⚠️ First build attempt failed, trying to install dev dependencies..."
+        if ! npm install --include=dev; then
+            echo_error "❌ Failed to install dev dependencies"
+            exit 1
+        fi
+        echo_info "🔄 Retrying build with dev dependencies..."
+        if ! npm run build; then
+            echo_error "❌ Build failed"
+            echo_error "Check your build configuration and try again"
+            exit 1
+        fi
     fi
 fi
 
-# Check if build directory exists
+# Check if build directory exists (handle both SvelteKit and regular builds)
 if [ ! -d "build" ] && [ ! -d "dist" ]; then
     echo_error "❌ Build directory (build or dist) not found after build"
     echo_error "Make sure your build script creates a 'build' or 'dist' directory"
