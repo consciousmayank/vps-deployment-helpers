@@ -755,23 +755,36 @@ if [ ! -f "package.json" ]; then
 fi
 
 echo_info "📦 Installing dependencies..."
-if ! npm install --production --silent; then
+if ! npm install; then
     echo_error "❌ Failed to install dependencies"
     exit 1
 fi
 
 echo_info "🔨 Building project..."
 if ! npm run build; then
-    echo_error "❌ Build failed"
-    echo_error "Check your build configuration and try again"
-    exit 1
+    echo_warn "⚠️ First build attempt failed, trying to install dev dependencies..."
+    if ! npm install --include=dev; then
+        echo_error "❌ Failed to install dev dependencies"
+        exit 1
+    fi
+    echo_info "🔄 Retrying build with dev dependencies..."
+    if ! npm run build; then
+        echo_error "❌ Build failed"
+        echo_error "Check your build configuration and try again"
+        exit 1
+    fi
 fi
 
 # Check if build directory exists
-if [ ! -d "build" ]; then
-    echo_error "❌ Build directory not found after build"
-    echo_error "Make sure your build script creates a 'build' directory"
+if [ ! -d "build" ] && [ ! -d "dist" ]; then
+    echo_error "❌ Build directory (build or dist) not found after build"
+    echo_error "Make sure your build script creates a 'build' or 'dist' directory"
     exit 1
+fi
+
+# Standardize build directory name
+if [ -d "dist" ] && [ ! -d "build" ]; then
+    mv dist build
 fi
 
 # Create logs directory
